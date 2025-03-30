@@ -49,7 +49,7 @@ class PromptBuilder:
                         "role": "user",
                         "content": [
                             {"type": "video", "video": frames_paths},
-                            {"type": "text", "text": f"Given that the frames respond to the timestamps {label_string}, for each video segment between each frames, determine the stage transitions. \nStages are as described here:\n{prior_response}\nPresent your answer in the following format:\n{stages}"""},
+                            {"type": "text", "text": f"Given that the frames respond to the timestamps {label_string}, for each video segment between each frames, determine the stage transitions. \nStages are as described here:\n{prior_response}\nPresent your answer strictly in the following format:\n{stages}\nDo not include any explanations, descriptions, or additional text. Only provide the stage transitions in the exact format above."""},
                         ]
                     }
                 ]
@@ -71,7 +71,7 @@ class PromptBuilder:
                         "role": "user",
                         "content": [
                             {"type": "video", "video": frames_paths},
-                            {"type": "text", "text": f"The provided frames are sampled from a video at 1 fps, with timestamps from {label_string}. Your task is to:\n\n1. Determine the overall scenario depicted in the video and express it as a short phrase.\n2. Identify and describe each process stage occurring throughout the video. Ensure that the stages cover the entire video duration from {timestamps[0]} to {timestamps[-1]} without any gaps.\n3. For each stage, provide:\n   - A concise stage name.\n   - A brief descriptive phrase that captures the essence of that stage.\n   - The corresponding start and end timestamps as whole numbers (since the frames are sampled at 1 fps).\n\nPresent your answer using the exact following format:\n\n[Overall Scenario]\n[start_time] - [end_time]: [Stage name]: [Brief Description of Stage]"},
+                            {"type": "text", "text": f"The provided frames are sampled from a video at 1 fps, with timestamps from {timestamps[0]} to {timestamps[-1]}. Your task is to analyze the full video and:\n\n1. Determine the overall scenario in a short phrase.\n2. Divide the video into process stages that span the entire duration without gaps or overlaps.\n3. For each stage, output only the following format:\n\n[start_time] - [end_time]: [Stage name]\n\nYour final output should start with:\n\n[Overall Scenario]: [Short phrase]\n\nFollowed by the stage breakdown lines in the specified format."},
                         ]
                     }
                 ]

@@ -44,7 +44,7 @@ class BatchRunner:
                 writer.writerow({k: row[k] for k in writer.fieldnames})
 
     def _extract_segments(self, text):
-        return re.findall(r"(\d+)s\s*-\s*(\d+)s", text)
+        return re.findall(r"\[(\d+)(?:s)?\]\s*-\s*\[(\d+)(?:s)?\]", text)
 
     def _evaluate(self, response, clip_start, clip_end):
         if not response:

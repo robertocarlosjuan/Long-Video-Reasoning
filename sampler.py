@@ -5,7 +5,7 @@ import numpy as np
 class FrameSampler:
     def __init__(self, config):
         self.config = config
-        self.temp_frames_dir = "tmp"
+        self.temp_frames_dir = self.config.temp_frames_dir
         os.makedirs(self.temp_frames_dir, exist_ok=True)
 
     def _cleanup_temp_frames(self):
