@@ -13,3 +13,6 @@ tmp/
 *.pywz
 __pycache__/
 *.sh
+.gitignore 
+timechat.py
+captioning.py

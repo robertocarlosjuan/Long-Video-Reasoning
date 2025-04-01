@@ -3,6 +3,7 @@ from config import (
     Qwen72BDenseSamplingConfig,
     Qwen72BCoarseSamplingConfig,
     TestConfig,
+    BaselineConfig,
 )
 from dataset import Ego4DLoader
 from sampler import FrameSampler
@@ -14,6 +15,7 @@ config_presets = {
     "dense": Qwen72BDenseSamplingConfig,
     "coarse": Qwen72BCoarseSamplingConfig,
     "test": TestConfig,
+    "baseline": BaselineConfig,
 }
 
 if __name__ == "__main__":

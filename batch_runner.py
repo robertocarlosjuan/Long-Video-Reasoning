@@ -33,32 +33,34 @@ class BatchRunner:
         with open(self.config.output_path, "w") as f:
             json.dump(self.results, f, indent=2)
 
-        with open(self.config.output_csv_path, "w", newline="") as csvfile:
-            writer = csv.DictWriter(csvfile, fieldnames=[
-                "id", "video_uid", "clip_uid", "query", "correct_segment",
-                "duration_sec", "clip_start_sec", "clip_end_sec",
-                "video_start_frame", "video_end_frame", "template"
-            ])
-            writer.writeheader()
-            for row in self.results:
-                writer.writerow({k: row[k] for k in writer.fieldnames})
-
     def _extract_segments(self, text):
-        return re.findall(r"\[(\d+)(?:s)?\]\s*-\s*\[(\d+)(?:s)?\]", text)
-
-    def _evaluate(self, response, clip_start, clip_end):
-        if not response:
-            return False
-        segments = self._extract_segments(response)
-        for start_str, end_str in segments:
+        segments_str = re.findall(r"\[(\d+(?:\.\d+)?)(?:s)?\]\s*-\s*\[(\d+(?:\.\d+)?)(?:s)?\]", text)
+        segments = []
+        for start_str, end_str in segments_str:
             try:
-                start = int(start_str)
-                end = int(end_str)
-                if clip_start >= start and clip_end <= end:
-                    return True
+                start = int(float(start_str))
+                end = int(float(end_str))
+                segments.append((start, end))
             except ValueError:
-                continue
+                pass
+        return segments
+    
+    def _evaluate(self, segments, clip_start, clip_end):
+        for start, end in segments:
+            if clip_start >= start and clip_end <= end:
+                return True
         return False
+    
+    def _select_frames(self, segments, frames_dir):
+        selected_frames_list = []
+        for start, end in segments:
+            segment = []
+            for i in range(start, end):
+                segment.append(os.path.join(frames_dir, f'frame_{i}.jpg'))
+            selected_frames_list.append(segment)
+        if len(selected_frames_list) == 0:
+            return [[os.path.join(frames_dir, x) for x in os.listdir(frames_dir)]]
+        return selected_frames_list
 
     def _report_metrics(self):
         total = len(self.results)
@@ -107,73 +109,136 @@ class BatchRunner:
 
     def run(self):
         instances = self.dataset_loader.load_instances()
-        for ctr, instance in enumerate(tqdm(instances)):
-            loading_time = time.time()
-            video_uid = instance["video_uid"]
-            query = instance["query"]
 
-            video_path = os.path.join(self.config.dataset_path, "v2", "nlq_videos", "full_scale", video_uid + ".mp4")
-            frames_info = self.sampler.sample(video_path, instance["duration_sec"])
-            frame_labels = [f["label"] for f in frames_info]
-            frames_paths = [f["frame_path"] for f in frames_info]
-            
+        if not os.path.exists(self.config.temporal_selection_json):
+            for ctr, instance in enumerate(tqdm(instances)):
+                if ctr < 20:
+                    continue
+                loading_time = time.time()
+                video_uid = instance["video_uid"]
+                query = instance["query"]
+
+                video_path = os.path.join(self.config.dataset_path, "v2", "nlq_videos", "full_scale", video_uid + ".mp4")
+                frames_info = self.sampler.sample(video_path)
+                if frames_info is None:
+                    print(f"Skipping {video_uid} due to possible memory issue")
+                    continue
+                frame_labels = [f["label"] for f in frames_info]
+                frames_paths = [f["frame_path"] for f in frames_info]
+                if not frames_info:
+                    print(f"Skipping {video_uid} — no frames sampled")
+                    continue
+                frames_dir = os.path.dirname(frames_paths[0])
+                frame_width = frames_info[0]["frame_width"]
+                frame_height = frames_info[0]["frame_height"]
+                sampling_strategy = frames_info[0]["sampling_strategy"]
+                turns = self.prompt_builder.num_turns()
+                prior_response = None
+                conversation = []
+                selected_frames_list = []
+                segments = []
+                is_correct = False
+                for turn_index in range(turns-1):
+                    cache_key = f"{video_uid}:{turn_index}"
+                    should_use_cache = self.prompt_builder.uses_query(turn_index) is False
+
+                    stage, message = self.prompt_builder.build(
+                        query=query,
+                        frames_paths=frames_paths,
+                        timestamps=frame_labels,
+                        prior_response=prior_response,
+                        turn_index=turn_index,
+                        selected_frames_list=selected_frames_list
+                    )
+
+                    if ctr == 0:
+                        print(stage)
+                        print(message)
+
+                    if should_use_cache and cache_key in self.cache:
+                        prior_response = self.cache[cache_key]
+                    else:
+                        start_time = time.time()
+                        print("loading duration: ", start_time-loading_time)
+                        response = self.inference_engine.run(message)[0]
+                        print("inference duration: ", time.time()-start_time)
+                        if should_use_cache:
+                            self.cache[cache_key] = response
+                        prior_response = response
+                    
+                    conversation.append({
+                        "prompt": message[0]["content"][-1]["text"],
+                        "response": prior_response
+                    })
+
+                    if stage == 'segment_selection':
+                        segments = self._extract_segments(prior_response)
+                        is_correct = self._evaluate(
+                            segments,
+                            clip_start=instance.get("clip_start_sec", 0),
+                            clip_end=instance.get("clip_end_sec", 0)
+                        )
+                    
+
+                result = {
+                    "id": instance["id"],
+                    "video_uid": video_uid,
+                    "clip_uid": instance["clip_uid"],
+                    "query": query,
+                    "response": prior_response,
+                    "chosen_segments": segments,
+                    "correct_segment": is_correct,
+                    "duration_sec": instance.get("duration_sec"),
+                    "clip_start_sec": instance.get("clip_start_sec"),
+                    "clip_end_sec": instance.get("clip_end_sec"),
+                    "video_start_frame": instance.get("video_start_frame"),
+                    "video_end_frame": instance.get("video_end_frame"),
+                    "frame_width": frame_width,
+                    "frame_height": frame_height,
+                    "sampling_strategy": sampling_strategy,
+                    "template": instance.get("template"),
+                    "conversation": conversation
+                }
+                self.results.append(result)
+
+                if ctr % 10 == 0:
+                    self._save_results()
+        else:
+            with open(self.config.temporal_selection_json, "r") as f:
+                temporal_selection = json.load(f)
             turns = self.prompt_builder.num_turns()
-            prior_response = None
-            conversation = []
-
-            for turn_index in range(turns):
-                cache_key = f"{video_uid}:{turn_index}"
-                should_use_cache = self.prompt_builder.uses_query(turn_index) is False
-
-                message = self.prompt_builder.build(
-                    query=query,
-                    frames_paths=frames_paths,
-                    timestamps=frame_labels,
-                    prior_response=prior_response,
-                    turn_index=turn_index
-                )
-
-                if should_use_cache and cache_key in self.cache:
-                    prior_response = self.cache[cache_key]
-                else:
-                    start_time = time.time()
-                    print("loading duration: ", start_time-loading_time)
+            for ctr, instance in enumerate(tqdm(temporal_selection)):
+                if ctr < 20:
+                    continue
+                video_uid = instance["video_uid"]
+                query = instance["query"]
+                video_path = os.path.join(self.config.dataset_path, "v2", "nlq_videos", "full_scale", video_uid + ".mp4")
+                frames_info = self.sampler.sample(video_path)
+                if frames_info is None:
+                    print(f"Skipping {video_uid} due to possible memory issue")
+                    continue
+                frames_paths = [f["frame_path"] for f in frames_info]
+                frame_labels = [f["label"] for f in frames_info]
+                frames_dir = os.path.dirname(frames_paths[0])
+                segments = self._extract_segments(instance['response'])
+                selected_frames_list = self._select_frames(segments, frames_dir)
+                responses = []
+                for selected_frames in selected_frames_list:
+                    stage, message = self.prompt_builder.build(
+                        query=query,
+                        frames_paths=frames_paths,
+                        timestamps=frame_labels,
+                        prior_response=instance["response"],
+                        turn_index=turns-1,
+                        selected_frames_list=selected_frames
+                    )
                     response = self.inference_engine.run(message)[0]
-                    print("inference duration: ", time.time()-start_time)
-                    if should_use_cache:
-                        self.cache[cache_key] = response
-                    prior_response = response
-                
-                conversation.append({
-                    "prompt": message[0]["content"][-1]["text"],
-                    "response": prior_response
-                })
+                    responses.append(f"####### Segment {selected_frames[0]} - {selected_frames[-1]} #######\n{response}")
+                instance["answer"] = '\n\n'.join(responses)
 
-            is_correct = self._evaluate(
-                prior_response,
-                clip_start=instance.get("clip_start_sec", 0),
-                clip_end=instance.get("clip_end_sec", 0)
-            )
-
-            result = {
-                "id": instance["id"],
-                "video_uid": video_uid,
-                "clip_uid": instance["clip_uid"],
-                "query": query,
-                "response": prior_response,
-                "correct_segment": is_correct,
-                "duration_sec": instance.get("duration_sec"),
-                "clip_start_sec": instance.get("clip_start_sec"),
-                "clip_end_sec": instance.get("clip_end_sec"),
-                "video_start_frame": instance.get("video_start_frame"),
-                "video_end_frame": instance.get("video_end_frame"),
-                "template": instance.get("template"),
-                "conversation": conversation
-            }
-            self.results.append(result)
-
-            if ctr % 10 == 0:
-                self._save_results()
+                self.results.append(instance)
+                if ctr % 10 == 0:
+                    self._save_results()
 
         if not self.config.ignore_cache:
             self._save_cache()

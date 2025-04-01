@@ -18,6 +18,23 @@ class TestConfig:
     output_plot_path = "test_outputs.png"
     temp_frames_dir = "tmp/test"
 
+class BaselineConfig:
+    dataset_path = "/nethome/che321/flash/datasets/Ego4D"
+    annotation_file = "v2/annotations/nlq_val.json"
+    max_edge_len = 224
+    sampling_rate = 1  # frames per second for dense sampling
+    num_frames = 8  # for uniform sampling
+    sampling_strategy = "dense"  # or "dense"
+    prompt_style = "baseline" #"stage_analysis"  # single style used per run
+    model_path = "Qwen/Qwen2.5-VL-7B-Instruct"
+    cache_path = "baseline_cached_stage_outputs.json"
+    ignore_cache = True  # set to True to force fresh run
+    output_path = "baseline_outputs.json"
+    output_csv_path = "baseline_outputs.csv"
+    output_plot_path = "baseline_outputs.png"
+    temp_frames_dir = "tmp/baseline"
+    temporal_selection_json = "baseline_temporal_selection.json"
+
 class Qwen72BDenseSamplingConfig:
     dataset_path = "/nethome/che321/flash/datasets/Ego4D"
     annotation_file = "v2/annotations/nlq_val.json"
@@ -27,12 +44,18 @@ class Qwen72BDenseSamplingConfig:
     sampling_strategy = "dense"  # or "dense"
     prompt_style = "frame_labeling" #"stage_analysis"  # single style used per run
     model_path = "Qwen/Qwen2.5-VL-72B-Instruct"
-    cache_path = "cached_stage_outputs.json"
+    cache_path = "dense_cached_stage_outputs.json"
     ignore_cache = True  # set to True to force fresh run
     output_path = "Qwen72B_Ego4D_dense_sampling.json"
     output_csv_path = "Qwen72B_Ego4D_dense_sampling.csv"
     output_plot_path = "Qwen72B_Ego4D_dense_sampling.png"
     temp_frames_dir = "tmp/dense"
+    temporal_selection_json = "Qwen72B_Ego4D_dense_sampling_temporal_selection.json"
+    if os.path.exists(temporal_selection_json): # final answer
+        model_path = "Qwen/Qwen2.5-VL-7B-Instruct"
+        sampling_strategy = "dense"
+        sampling_rate = 1
+        max_edge_len = 224
 
 class Qwen72BCoarseSamplingConfig:
     dataset_path = "/nethome/che321/flash/datasets/Ego4D"
@@ -43,9 +66,32 @@ class Qwen72BCoarseSamplingConfig:
     sampling_strategy = "uniform"  # or "dense"
     prompt_style = "stage_analysis" #"stage_analysis"  # single style used per run
     model_path = "Qwen/Qwen2.5-VL-72B-Instruct"
-    cache_path = "cached_stage_outputs.json"
+    cache_path = "coarse_cached_stage_outputs.json"
     ignore_cache = True  # set to True to force fresh run
     output_path = "Qwen72B_Ego4D_coarse_sampling.json"
     output_csv_path = "Qwen72B_Ego4D_coarse_sampling.csv"
     output_plot_path = "Qwen72B_Ego4D_coarse_sampling.png"
     temp_frames_dir = "tmp/coarse"
+    temporal_selection_json = "Qwen72B_Ego4D_coarse_sampling_temporal_selection.json"
+    if os.path.exists(temporal_selection_json): # final answer
+        model_path = "Qwen/Qwen2.5-VL-7B-Instruct"
+        sampling_strategy = "dense"
+        sampling_rate = 1
+        max_edge_len = 224
+
+class CLIPSBERTDenseSamplingConfig:
+    dataset_path = "/nethome/che321/flash/datasets/Ego4D"
+    annotation_file = "v2/annotations/nlq_val.json"
+    max_edge_len = 112
+    sampling_rate = 1  # frames per second for dense sampling
+    num_frames = 8  # for uniform sampling
+    sampling_strategy = "dense"  # or "dense"
+    prompt_style = "frame_labeling" #"stage_analysis"  # single style used per run
+    model_path = "Qwen/Qwen2.5-VL-7B-Instruct"
+    cache_path = "cached_stage_outputs.json"
+    ignore_cache = True  # set to True to force fresh run
+    output_path = "Qwen72B_Ego4D_dense_sampling.json"
+    output_csv_path = "Qwen72B_Ego4D_dense_sampling.csv"
+    output_plot_path = "Qwen72B_Ego4D_dense_sampling.png"
+    temp_frames_dir = "tmp/dense"
+    temporal_selection_json = "Qwen72B_Ego4D_dense_sampling_temporal_selection.json"

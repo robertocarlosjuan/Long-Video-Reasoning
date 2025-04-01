@@ -4,10 +4,10 @@ class PromptBuilder:
 
     def num_turns(self):
         if self.style == "stage_analysis":
-            return 3
+            return 4
         if self.style == "frame_labeling":
-            return 2
-        return 1
+            return 3
+        return 2
     
     def uses_query(self, turn_index):
         if self.style == "stage_analysis":
@@ -16,15 +16,23 @@ class PromptBuilder:
             return turn_index == 1
         return True
 
-    def build(self, query=None, frames_paths=None, timestamps=None, prior_response=None, turn_index=0):
-        if self.style == "default":
-            return [{"role": "user", "content": f"Describe what is happening. Query: {query}"}]
+    def build(self, query=None, frames_paths=None, timestamps=None, selected_frames_list = [],prior_response=None, turn_index=0):
+        if self.style == "baseline":
+            return 'answer', [
+                    {
+                        "role": "user",
+                        "content": [
+                            {"type": "video", "video": frames_paths},
+                            {"type": "text", "text": f"{query}"}
+                        ]
+                    }
+                ]
 
         elif self.style == "instruction":
-            return [{"role": "user", "content": f"Instruction: Describe what is happening.\nUser: {query}"}]
+            return 'answer', [{"role": "user", "content": f"Instruction: Describe what is happening.\nUser: {query}"}]
 
         elif self.style == "chat":
-            return [
+            return 'answer', [
                 {"role": "system", "content": "You are a helpful assistant."},
                 {"role": "user", "content": "What is the person doing in the video?"},
                 {"role": "user", "content": query},
@@ -32,7 +40,7 @@ class PromptBuilder:
 
         elif self.style == "stage_analysis":
             if turn_index == 0:
-                return [
+                return 'understanding', [
                     {
                         "role": "user",
                         "content": [
@@ -44,7 +52,7 @@ class PromptBuilder:
             elif turn_index == 1:
                 label_string = ", ".join(timestamps or [])
                 stages = '\n'.join([f"{timestamps[i]} - {timestamps[i+1]}: [Stage] -> [Stage]" for i in range(len(timestamps)-1)])
-                return [
+                return 'segmentation', [
                     {
                         "role": "user",
                         "content": [
@@ -54,7 +62,7 @@ class PromptBuilder:
                     }
                 ]
             elif turn_index == 2:
-                return [
+                return 'segment_selection', [
                     {
                         "role": "user",
                         "content": [
@@ -62,11 +70,21 @@ class PromptBuilder:
                         ]
                     }
                 ]
+            elif turn_index == 3:
+                return 'answer', [
+                    {
+                        "role": "user",
+                        "content": [
+                            {"type": "video", "video": selected_frames_list},
+                            {"type": "text", "text": f"{query}"},
+                        ]
+                    }
+                ]
 
         elif self.style == "frame_labeling":
             label_string = ", ".join(timestamps[:3] + ["... up to "] + [timestamps[-1]] or [])
             if turn_index == 0:
-                return [
+                return 'segmentation', [
                     {
                         "role": "user",
                         "content": [
@@ -76,7 +94,7 @@ class PromptBuilder:
                     }
                 ]
             elif turn_index == 1:
-                return [
+                return 'segment_selection', [
                     {
                         "role": "user",
                         "content": [
@@ -84,6 +102,15 @@ class PromptBuilder:
                         ]
                     }
                 ]
-
+            elif turn_index == 2:
+                return 'answer', [
+                    {
+                        "role": "user",
+                        "content": [
+                            {"type": "video", "video": selected_frames_list},
+                            {"type": "text", "text": f"{query}"},
+                        ]
+                    }
+                ]
         else:
             raise ValueError("Unsupported prompt style")
