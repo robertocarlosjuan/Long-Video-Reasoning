@@ -112,8 +112,6 @@ class BatchRunner:
 
         if not os.path.exists(self.config.temporal_selection_json):
             for ctr, instance in enumerate(tqdm(instances)):
-                if ctr < 20:
-                    continue
                 loading_time = time.time()
                 video_uid = instance["video_uid"]
                 query = instance["query"]
@@ -208,8 +206,6 @@ class BatchRunner:
                 temporal_selection = json.load(f)
             turns = self.prompt_builder.num_turns()
             for ctr, instance in enumerate(tqdm(temporal_selection)):
-                if ctr < 20:
-                    continue
                 video_uid = instance["video_uid"]
                 query = instance["query"]
                 video_path = os.path.join(self.config.dataset_path, "v2", "nlq_videos", "full_scale", video_uid + ".mp4")

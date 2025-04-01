@@ -23,7 +23,7 @@ class PromptBuilder:
                         "role": "user",
                         "content": [
                             {"type": "video", "video": frames_paths},
-                            {"type": "text", "text": f"{query}"}
+                            {"type": "text", "text": f"Based on the video, answer the question. Do not use bounding boxes. Give only textual descriptions. If the answer cannot be determined from available information, say 'Not enough information'. Do not use full sentences. Give only the answer.\nQuestion:{query}"}
                         ]
                     }
                 ]
@@ -76,7 +76,7 @@ class PromptBuilder:
                         "role": "user",
                         "content": [
                             {"type": "video", "video": selected_frames_list},
-                            {"type": "text", "text": f"{query}"},
+                            {"type": "text", "text": f"Based on the video, answer the question. Do not use bounding boxes. Give only textual descriptions. If the answer cannot be determined from available information, say 'Not enough information'. Do not use full sentences. Give only the answer.\nQuestion:{query}"},
                         ]
                     }
                 ]
@@ -108,7 +108,7 @@ class PromptBuilder:
                         "role": "user",
                         "content": [
                             {"type": "video", "video": selected_frames_list},
-                            {"type": "text", "text": f"{query}"},
+                            {"type": "text", "text": f"Based on the video, answer the question. Do not use bounding boxes. Give only textual descriptions. If the answer cannot be determined from available information, say 'Not enough information'. Do not use full sentences. Give only the answer.\nQuestion:{query}"},
                         ]
                     }
                 ]
