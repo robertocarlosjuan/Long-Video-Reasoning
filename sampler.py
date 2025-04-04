@@ -2,7 +2,7 @@ import os
 import cv2
 import torch
 import numpy as np
-
+from tqdm import tqdm
 class FrameSampler:
     def __init__(self, config):
         self.config = config
@@ -44,19 +44,40 @@ class FrameSampler:
             if est_mem > target_bytes:
                 return dim - 16  # Previous dimension was the last safe one
         return max_dim
+    
+    def generate_frames(self, video_uids, video_dir):
+        print(f"Generating frames for {len(video_uids)} videos")
+        for video_uid in tqdm(video_uids):
+            video_path = os.path.join(video_dir, video_uid + ".mp4")
+            video_frames_dir = os.path.join(self.temp_frames_dir, video_uid)
+            os.makedirs(video_frames_dir, exist_ok=True)
+            cap = cv2.VideoCapture(video_path)
+            fps = cap.get(cv2.CAP_PROP_FPS)
+            total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))/fps
+            indices = np.arange(0, total_frames, 1)
+            for idx in indices:
+                frame_path = os.path.join(video_frames_dir, f"frame_{int(idx)}.jpg")
+                if os.path.exists(frame_path):
+                    continue
+                cap.set(cv2.CAP_PROP_POS_FRAMES, idx)
+                ret, frame = cap.read()
+                if not ret:
+                    continue
+                cv2.imwrite(frame_path, frame)
+        cap.release()
+        return video_frames_dir
 
-    def sample(self, video_path):
-        self._cleanup_temp_frames()
-        cap = cv2.VideoCapture(video_path)
-        fps = cap.get(cv2.CAP_PROP_FPS)
-        total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
+    def sample(self, video_uid):
+        video_frames_dir = os.path.join(self.temp_frames_dir, video_uid)
+        video_frames_paths = {int(x.split("frame_")[1].split(".")[0]): os.path.join(video_frames_dir, x) for x in os.listdir(video_frames_dir)}
+        total_frames = max(video_frames_paths.keys())
 
         sampling_strategy = self.config.sampling_strategy
 
         if sampling_strategy == "uniform":
             indices = np.linspace(0, total_frames - 1, self.config.num_frames).astype(int)
         elif sampling_strategy == "dense":
-            step = max(1, int(fps / self.config.sampling_rate))
+            step = max(1, int(1 / self.config.sampling_rate))
             indices = np.arange(0, total_frames, step)
         else:
             raise ValueError("Unsupported sampling strategy")
@@ -70,10 +91,8 @@ class FrameSampler:
         
         frames_with_info = []
         for idx in indices:
-            cap.set(cv2.CAP_PROP_POS_FRAMES, idx)
-            ret, frame = cap.read()
-            if not ret:
-                continue
+            frame_path = video_frames_paths[idx]
+            frame = cv2.imread(frame_path)
             height, width = frame.shape[:2]
             max_dim = max(height, width)
             if max_dim > max_edge_len:
@@ -81,20 +100,14 @@ class FrameSampler:
                 width = int(width * scale)
                 height = int(height * scale)
                 frame = cv2.resize(frame, (width, height))
-            timestamp = int(idx / fps)
-            frame_path = os.path.join(self.temp_frames_dir, f"frame_{timestamp}.jpg")
-            cv2.imwrite(frame_path, frame)
             frames_with_info.append({
                 "frame": frame,
                 "frame_index": idx,
-                "timestamp_sec": timestamp,
-                "label": f"{int(timestamp)}s",
+                "timestamp_sec": idx,
+                "label": f"{int(idx)}s",
                 "frame_path": frame_path,
                 "frame_width": width,
                 "frame_height": height,
                 "sampling_strategy": sampling_strategy
             })
-            
-
-        cap.release()
         return frames_with_info

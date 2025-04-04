@@ -109,15 +109,17 @@ class BatchRunner:
 
     def run(self):
         instances = self.dataset_loader.load_instances()
+        video_dir = os.path.join(self.config.dataset_path, "v2", "nlq_videos", "full_scale")
+        video_uids = list(set([instance["video_uid"] for instance in instances]))
+        video_uids.reverse()
+        # self.sampler.generate_frames(video_uids, video_dir)
 
         if not os.path.exists(self.config.temporal_selection_json):
             for ctr, instance in enumerate(tqdm(instances)):
                 loading_time = time.time()
                 video_uid = instance["video_uid"]
                 query = instance["query"]
-
-                video_path = os.path.join(self.config.dataset_path, "v2", "nlq_videos", "full_scale", video_uid + ".mp4")
-                frames_info = self.sampler.sample(video_path)
+                frames_info = self.sampler.sample(video_uid)
                 if frames_info is None:
                     print(f"Skipping {video_uid} due to possible memory issue")
                     continue
@@ -140,7 +142,7 @@ class BatchRunner:
                     cache_key = f"{video_uid}:{turn_index}"
                     should_use_cache = self.prompt_builder.uses_query(turn_index) is False
 
-                    stage, message = self.prompt_builder.build(
+                    stage, num_inference_attempts, message = self.prompt_builder.build(
                         query=query,
                         frames_paths=frames_paths,
                         timestamps=frame_labels,
@@ -156,26 +158,27 @@ class BatchRunner:
                     if should_use_cache and cache_key in self.cache:
                         prior_response = self.cache[cache_key]
                     else:
-                        start_time = time.time()
-                        print("loading duration: ", start_time-loading_time)
-                        response = self.inference_engine.run(message)[0]
-                        print("inference duration: ", time.time()-start_time)
+                        responses = self.inference_engine.run(message, num_inference_attempts)
                         if should_use_cache:
-                            self.cache[cache_key] = response
-                        prior_response = response
-                    
-                    conversation.append({
-                        "prompt": message[0]["content"][-1]["text"],
-                        "response": prior_response
-                    })
+                            self.cache[cache_key] = responses
+                        prior_response = responses[0]
 
-                    if stage == 'segment_selection':
-                        segments = self._extract_segments(prior_response)
-                        is_correct = self._evaluate(
-                            segments,
-                            clip_start=instance.get("clip_start_sec", 0),
-                            clip_end=instance.get("clip_end_sec", 0)
-                        )
+                        conversation.append({
+                                "prompt": message[0]["content"][-1]["text"],
+                                "responses": responses
+                            })
+                        if stage == 'segment_selection':
+                            correct_list = []
+                            for r in responses:
+                                segments = self._extract_segments(r)
+                                is_correct = self._evaluate(
+                                    segments,
+                                    clip_start=instance.get("clip_start_sec", 0),
+                                    clip_end=instance.get("clip_end_sec", 0)
+                                )
+                                correct_list.append(is_correct)
+                            conversation[-1]['is_correct'] = correct_list
+
                     
 
                 result = {
@@ -183,9 +186,6 @@ class BatchRunner:
                     "video_uid": video_uid,
                     "clip_uid": instance["clip_uid"],
                     "query": query,
-                    "response": prior_response,
-                    "chosen_segments": segments,
-                    "correct_segment": is_correct,
                     "duration_sec": instance.get("duration_sec"),
                     "clip_start_sec": instance.get("clip_start_sec"),
                     "clip_end_sec": instance.get("clip_end_sec"),
@@ -209,7 +209,7 @@ class BatchRunner:
                 video_uid = instance["video_uid"]
                 query = instance["query"]
                 video_path = os.path.join(self.config.dataset_path, "v2", "nlq_videos", "full_scale", video_uid + ".mp4")
-                frames_info = self.sampler.sample(video_path)
+                frames_info = self.sampler.sample(video_uid)
                 if frames_info is None:
                     print(f"Skipping {video_uid} due to possible memory issue")
                     continue
@@ -220,7 +220,7 @@ class BatchRunner:
                 selected_frames_list = self._select_frames(segments, frames_dir)
                 responses = []
                 for selected_frames in selected_frames_list:
-                    stage, message = self.prompt_builder.build(
+                    stage, num_inference_attempts, message = self.prompt_builder.build(
                         query=query,
                         frames_paths=frames_paths,
                         timestamps=frame_labels,
@@ -228,7 +228,7 @@ class BatchRunner:
                         turn_index=turns-1,
                         selected_frames_list=selected_frames
                     )
-                    response = self.inference_engine.run(message)[0]
+                    response = self.inference_engine.run(message, num_inference_attempts)[0]
                     responses.append(f"####### Segment {selected_frames[0]} - {selected_frames[-1]} #######\n{response}")
                 instance["answer"] = '\n\n'.join(responses)
 

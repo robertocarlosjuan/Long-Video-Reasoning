@@ -16,7 +16,7 @@ class TestConfig:
     output_path = "test_outputs.json"
     output_csv_path = "test_outputs.csv"
     output_plot_path = "test_outputs.png"
-    temp_frames_dir = "tmp/test"
+    temp_frames_dir = "frames"
 
 class BaselineConfig:
     dataset_path = "/nethome/che321/flash/datasets/Ego4D"
@@ -32,7 +32,7 @@ class BaselineConfig:
     output_path = "baseline_outputs.json"
     output_csv_path = "baseline_outputs.csv"
     output_plot_path = "baseline_outputs.png"
-    temp_frames_dir = "tmp/baseline"
+    temp_frames_dir = "frames"
     temporal_selection_json = "baseline_temporal_selection.json"
 
 class Qwen72BDenseSamplingConfig:
@@ -49,7 +49,7 @@ class Qwen72BDenseSamplingConfig:
     output_path = "Qwen72B_Ego4D_dense_sampling.json"
     output_csv_path = "Qwen72B_Ego4D_dense_sampling.csv"
     output_plot_path = "Qwen72B_Ego4D_dense_sampling.png"
-    temp_frames_dir = "tmp/dense"
+    temp_frames_dir = "frames"
     temporal_selection_json = "Qwen72B_Ego4D_dense_sampling_temporal_selection.json"
     if os.path.exists(temporal_selection_json): # final answer
         model_path = "Qwen/Qwen2.5-VL-7B-Instruct"
@@ -71,7 +71,7 @@ class Qwen72BCoarseSamplingConfig:
     output_path = "Qwen72B_Ego4D_coarse_sampling.json"
     output_csv_path = "Qwen72B_Ego4D_coarse_sampling.csv"
     output_plot_path = "Qwen72B_Ego4D_coarse_sampling.png"
-    temp_frames_dir = "tmp/coarse"
+    temp_frames_dir = "frames"
     temporal_selection_json = "Qwen72B_Ego4D_coarse_sampling_temporal_selection.json"
     if os.path.exists(temporal_selection_json): # final answer
         model_path = "Qwen/Qwen2.5-VL-7B-Instruct"
@@ -93,5 +93,5 @@ class CLIPSBERTDenseSamplingConfig:
     output_path = "Qwen72B_Ego4D_dense_sampling.json"
     output_csv_path = "Qwen72B_Ego4D_dense_sampling.csv"
     output_plot_path = "Qwen72B_Ego4D_dense_sampling.png"
-    temp_frames_dir = "tmp/dense"
+    temp_frames_dir = "frames"
     temporal_selection_json = "Qwen72B_Ego4D_dense_sampling_temporal_selection.json"

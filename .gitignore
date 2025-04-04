@@ -16,3 +16,5 @@ __pycache__/
 .gitignore 
 timechat.py
 captioning.py
+frames/
+tmp/
