@@ -41,7 +41,7 @@ class InferenceEngine:
         print("num_inference_attempts", num_inference_attempts)
         generated_ids = self.model.generate(
             **inputs, 
-            max_new_tokens=128,
+            max_new_tokens=1024,
             do_sample=True,
             top_k=50,
             top_p=0.95,

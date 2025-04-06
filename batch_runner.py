@@ -9,6 +9,8 @@ from collections import defaultdict
 from prompt_builder import PromptBuilder
 import matplotlib.pyplot as plt
 from tqdm import tqdm
+from utils import select_best_by_edit_distance, check_segmentation_validity
+
 class BatchRunner:
     def __init__(self, config, dataset_loader, sampler, inference_engine):
         self.config = config
@@ -34,22 +36,53 @@ class BatchRunner:
             json.dump(self.results, f, indent=2)
 
     def _extract_segments(self, text):
-        segments_str = re.findall(r"\[(\d+(?:\.\d+)?)(?:s)?\]\s*-\s*\[(\d+(?:\.\d+)?)(?:s)?\]", text)
-        segments = []
-        for start_str, end_str in segments_str:
-            try:
-                start = int(float(start_str))
-                end = int(float(end_str))
-                segments.append((start, end))
-            except ValueError:
-                pass
-        return segments
+        if self.config.prompt_style == "coarse_cot":
+            lines = text.splitlines()
+            # Pattern to find lines like "1. 0s - 128s:"
+            segment_pattern = re.compile(r'^\s*\d+\.\s*([\d]+)s\s*-\s*([\d]+)s:')
+            
+            relevant_segments = []
+            num_segments_listed = 0
+            current_range = None
+            
+            for line in lines:
+                # Check if the line indicates a new segment range, e.g., "1. 0s - 128s:"
+                match = segment_pattern.match(line)
+                if match:
+                    start = int(match.group(1))
+                    end = int(match.group(2))
+                    current_range = (start, end)
+                
+                # Check if the line says "Verdict: Relevant"
+                if "Verdict:" in line:
+                    # Trim and compare
+                    verdict_str = line.split("Verdict:")[-1].strip().replace('[', '').replace(']', '').lower()
+                    if verdict_str == "relevant" and current_range:
+                        relevant_segments.append(current_range)
+                        current_range = None
+                    else:
+                        current_range = None
+                    num_segments_listed += 1
+            
+            return relevant_segments, num_segments_listed
+        else:
+            segments_str = re.findall(r"\[(\d+(?:\.\d+)?)(?:s)?\]\s*-\s*\[(\d+(?:\.\d+)?)(?:s)?\]", text)
+            segments = []
+            for start_str, end_str in segments_str:
+                try:
+                    start = int(float(start_str))
+                    end = int(float(end_str))
+                    segments.append((start, end))
+                except ValueError:
+                    pass
+            return segments, None
     
     def _evaluate(self, segments, clip_start, clip_end):
+        correct = False
         for start, end in segments:
             if clip_start >= start and clip_end <= end:
-                return True
-        return False
+                correct = True
+        return correct
     
     def _select_frames(self, segments, frames_dir):
         selected_frames_list = []
@@ -156,30 +189,62 @@ class BatchRunner:
                         print(message)
 
                     if should_use_cache and cache_key in self.cache:
-                        prior_response = self.cache[cache_key]
+                        responses = self.cache[cache_key]
                     else:
                         responses = self.inference_engine.run(message, num_inference_attempts)
                         if should_use_cache:
                             self.cache[cache_key] = responses
-                        prior_response = responses[0]
 
                         conversation.append({
                                 "prompt": message[0]["content"][-1]["text"],
                                 "responses": responses
                             })
-                        if stage == 'segment_selection':
-                            correct_list = []
+                        if stage == 'segmentation':
+                            required_segments = [f"{frame_labels[i]} - {frame_labels[i+1]}" for i in range(len(frame_labels)-1)]
+                            candidate_prior = []
+                            # Ensure all segments are present
                             for r in responses:
-                                segments = self._extract_segments(r)
+                                missing_segments = [x for x in required_segments if x not in r]
+                                if len(missing_segments)>0:
+                                    continue
+                                elif not check_segmentation_validity(r, prior_response):
+                                    continue
+                                else:
+                                    candidate_prior.append(r)
+                            # Select the best response by consensus on edit distance
+                            if len(candidate_prior) > 0:
+                                prior_response = select_best_by_edit_distance(candidate_prior)
+                            else:
+                                prior_response = responses[0]
+                                for response in responses[1:]:
+                                    if len(response) > len(prior_response):
+                                        prior_response = response
+                            conversation[-1]['chosen_response'] = prior_response
+                        elif stage == 'segment_selection':
+                            correct_list = []
+                            num_pred_relevant = []
+                            num_segments_listed_list = []
+                            for r in responses:
+                                segments, num_segments_listed = self._extract_segments(r)
                                 is_correct = self._evaluate(
                                     segments,
                                     clip_start=instance.get("clip_start_sec", 0),
-                                    clip_end=instance.get("clip_end_sec", 0)
+                                    clip_end=instance.get("clip_end_sec", 0),
                                 )
                                 correct_list.append(is_correct)
-                            conversation[-1]['is_correct'] = correct_list
-
-                    
+                                num_pred_relevant.append(len(segments))
+                                num_segments_listed_list.append(num_segments_listed)
+                            conversation[-1]['correct_relevant_segments'] = list(zip(correct_list, num_pred_relevant, num_segments_listed_list))
+                            best = 1
+                            for i in range(len(correct_list)):
+                                if correct_list[i]:
+                                    if num_segments_listed_list[i] == self.config.num_frames-1 and num_pred_relevant[i]/num_segments_listed_list[i] < best:
+                                        best = num_pred_relevant[i]/num_segments_listed_list[i]
+                                        prior_response = responses[i]
+                            if best == 1:
+                                prior_response = None
+                        else:
+                            prior_response = responses[0]
 
                 result = {
                     "id": instance["id"],
@@ -199,8 +264,10 @@ class BatchRunner:
                 }
                 self.results.append(result)
 
-                if ctr % 10 == 0:
+                if ctr < 10 or ctr % 10 == 0:
                     self._save_results()
+                    if not self.config.ignore_cache:
+                        self._save_cache()
         else:
             with open(self.config.temporal_selection_json, "r") as f:
                 temporal_selection = json.load(f)
@@ -235,6 +302,8 @@ class BatchRunner:
                 self.results.append(instance)
                 if ctr % 10 == 0:
                     self._save_results()
+                    if not self.config.ignore_cache:
+                        self._save_cache()
 
         if not self.config.ignore_cache:
             self._save_cache()
