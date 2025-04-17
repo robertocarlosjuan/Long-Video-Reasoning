@@ -145,10 +145,15 @@ class BatchRunner:
         video_dir = os.path.join(self.config.dataset_path, "v2", "nlq_videos", "full_scale")
         video_uids = list(set([instance["video_uid"] for instance in instances]))
         video_uids.reverse()
+        with open(self.config.output_path, "r") as f:
+            self.results = json.load(f)
+            processed_ids = [x["id"] for x in self.results]
         # self.sampler.generate_frames(video_uids, video_dir)
 
         if not os.path.exists(self.config.temporal_selection_json):
             for ctr, instance in enumerate(tqdm(instances)):
+                if instance["id"] in processed_ids:
+                    continue
                 loading_time = time.time()
                 video_uid = instance["video_uid"]
                 query = instance["query"]

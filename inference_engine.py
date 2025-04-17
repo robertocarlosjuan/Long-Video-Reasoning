@@ -1,6 +1,6 @@
 import os
 import torch
-from transformers import Qwen2_5_VLForConditionalGeneration, AutoProcessor
+from transformers import Qwen2_5_VLForConditionalGeneration, AutoProcessor, BitsAndBytesConfig
 from qwen_vl_utils import process_vision_info
 
 class InferenceEngine:
@@ -8,23 +8,35 @@ class InferenceEngine:
         self.config = config
         model_path = config.model_path
         
+        # Configure 4-bit quantization for both model and inputs
+        quantization_config = BitsAndBytesConfig(
+            load_in_4bit=True,
+            bnb_4bit_compute_dtype=torch.bfloat16,
+            bnb_4bit_use_double_quant=True,
+            bnb_4bit_quant_type="nf4"
+        )
+        
         # Get number of available GPUs
         self.num_gpus = torch.cuda.device_count()
         print(f"Using {self.num_gpus} GPUs")
-        if False: #self.num_gpus == 2:
-            device_map = {'visual': 0, 'model.embed_tokens': 1, 'model.layers.0': 1, 'model.layers.1': 1, 'model.layers.2': 1, 'model.layers.3': 1, 'model.layers.4': 1, 'model.layers.5': 1, 'model.layers.6': 1, 'model.layers.7': 1, 'model.layers.8': 1, 'model.layers.9': 1, 'model.layers.10': 1, 'model.layers.11': 1, 'model.layers.12': 1, 'model.layers.13': 1, 'model.layers.14': 1, 'model.layers.15': 1, 'model.layers.16': 1, 'model.layers.17': 1, 'model.layers.18': 1, 'model.layers.19': 1, 'model.layers.20': 1, 'model.layers.21': 1, 'model.layers.22': 1, 'model.layers.23': 1, 'model.layers.24': 1, 'model.layers.25': 1, 'model.layers.26': 1, 'model.layers.27': 1, 'model.norm': 1, 'model.rotary_emb': 1, 'lm_head': 1}
-        else:
-            device_map = 'auto'
         
-        # Load model on first GPU
+        # Load model with 4-bit quantization
         self.model = Qwen2_5_VLForConditionalGeneration.from_pretrained(
             model_path,
-            torch_dtype=torch.bfloat16,
-            attn_implementation="flash_attention_2",
-            device_map=device_map  # let HF parallelize across GPUs
+            quantization_config=quantization_config,
+            device_map="auto",
+            attn_implementation="flash_attention_2"
         )
+        
         print(self.model.hf_device_map)
-        self.processor = AutoProcessor.from_pretrained(model_path, use_fast=True)
+        
+        # Initialize processor with 4-bit quantization
+        self.processor = AutoProcessor.from_pretrained(
+            model_path, 
+            use_fast=True,
+            torch_dtype=torch.bfloat16,
+            quantization_config=quantization_config
+        )
 
     def run(self, message, num_inference_attempts=1):
         text = self.processor.apply_chat_template(message, tokenize=False, add_generation_prompt=True)
