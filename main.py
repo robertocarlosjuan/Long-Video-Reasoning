@@ -7,7 +7,6 @@ from config import (
     Qwen72BCoarseCoTSamplingConfig,
 )
 from dataset import Ego4DLoader
-from sampler import FrameSampler
 from inference_engine import InferenceEngine
 from batch_runner import BatchRunner
 
@@ -40,7 +39,6 @@ if __name__ == "__main__":
 
     # Initialize components and run
     dataset_loader = Ego4DLoader(config)
-    sampler = FrameSampler(config)
     inference_engine = InferenceEngine(config)
-    runner = BatchRunner(config, dataset_loader, sampler, inference_engine)
+    runner = BatchRunner(config, dataset_loader, inference_engine)
     runner.run()

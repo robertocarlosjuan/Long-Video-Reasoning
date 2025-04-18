@@ -82,17 +82,17 @@ class Qwen72BCoarseSamplingConfig:
 class Qwen72BCoarseCoTSamplingConfig:
     dataset_path = "/nethome/che321/flash/datasets/Ego4D"
     annotation_file = "v2/annotations/nlq_val.json"
-    max_edge_len = 512
+    max_edge_len = 224
     sampling_rate = 1  # frames per second for dense sampling
     num_frames = 8  # for uniform sampling
     sampling_strategy = "uniform"  # or "dense"
     prompt_style = "coarse_cot" #"stage_analysis"  # single style used per run
-    model_path = "Qwen/Qwen2.5-VL-72B-Instruct"
+    model_path = "Qwen/Qwen2.5-VL-7B-Instruct"
     cache_path = "coarse_cot_cached_stage_outputs.json"
     ignore_cache = False  # set to True to force fresh run
-    output_path = "Qwen72B_Ego4D_coarse_cot_sampling.json"
-    output_csv_path = "Qwen72B_Ego4D_coarse_cot_sampling.csv"
-    output_plot_path = "Qwen72B_Ego4D_coarse_cot_sampling.png"
+    output_path = "Test_Qwen72B_Ego4D_coarse_cot_sampling.json"
+    output_csv_path = "Test_Qwen72B_Ego4D_coarse_cot_sampling.csv"
+    output_plot_path = "Test_Qwen72B_Ego4D_coarse_cot_sampling.png"
     temp_frames_dir = "frames"
     temporal_selection_json = "Qwen72B_Ego4D_coarse_cot_sampling_temporal_selection.json"
     if os.path.exists(temporal_selection_json): # final answer

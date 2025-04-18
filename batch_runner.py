@@ -2,6 +2,8 @@ import os
 import tempfile
 import json
 import imageio
+import numpy as np
+import cv2
 import re
 import csv
 import time
@@ -12,10 +14,9 @@ from tqdm import tqdm
 from utils import select_best_by_edit_distance, check_segmentation_validity
 
 class BatchRunner:
-    def __init__(self, config, dataset_loader, sampler, inference_engine):
+    def __init__(self, config, dataset_loader, inference_engine):
         self.config = config
         self.dataset_loader = dataset_loader
-        self.sampler = sampler
         self.inference_engine = inference_engine
         self.prompt_builder = PromptBuilder(config)
         self.cache = self._load_cache() if not config.ignore_cache else {}
@@ -123,6 +124,20 @@ class BatchRunner:
 
         self._plot_metrics(query_map)
 
+    def get_frame_labels(self, video_path):
+        cap = cv2.VideoCapture(video_path)
+        total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
+        sampling_strategy = self.config.sampling_strategy
+        indices = []
+        if sampling_strategy == "uniform":
+            indices = np.linspace(0, total_frames - 1, self.config.num_frames).astype(int)
+        elif sampling_strategy == "dense":
+            step = max(1, int(1 / self.config.sampling_rate))
+            indices = np.arange(0, total_frames, step)
+        else:
+            raise ValueError("Unsupported sampling strategy")
+        return indices
+
     def _plot_metrics(self, query_map):
         categories = sorted(query_map.keys())
         accuracies = [sum(flags) / len(flags) for flags in [query_map[c] for c in categories]]
@@ -145,10 +160,12 @@ class BatchRunner:
         video_dir = os.path.join(self.config.dataset_path, "v2", "nlq_videos", "full_scale")
         video_uids = list(set([instance["video_uid"] for instance in instances]))
         video_uids.reverse()
-        with open(self.config.output_path, "r") as f:
-            self.results = json.load(f)
-            processed_ids = [x["id"] for x in self.results]
-        # self.sampler.generate_frames(video_uids, video_dir)
+        if os.path.exists(self.config.output_path):
+            with open(self.config.output_path, "r") as f:
+                self.results = json.load(f)
+                processed_ids = [x["id"] for x in self.results]
+        else:
+            processed_ids = []
 
         if not os.path.exists(self.config.temporal_selection_json):
             for ctr, instance in enumerate(tqdm(instances)):
@@ -156,20 +173,10 @@ class BatchRunner:
                     continue
                 loading_time = time.time()
                 video_uid = instance["video_uid"]
+                video_path = os.path.join(video_dir, video_uid + ".mp4")
+                frame_labels = self.get_frame_labels(video_path)
+                sampling_strategy = self.config.sampling_strategy
                 query = instance["query"]
-                frames_info = self.sampler.sample(video_uid)
-                if frames_info is None:
-                    print(f"Skipping {video_uid} due to possible memory issue")
-                    continue
-                frame_labels = [f["label"] for f in frames_info]
-                frames_paths = [f["frame_path"] for f in frames_info]
-                if not frames_info:
-                    print(f"Skipping {video_uid} — no frames sampled")
-                    continue
-                frames_dir = os.path.dirname(frames_paths[0])
-                frame_width = frames_info[0]["frame_width"]
-                frame_height = frames_info[0]["frame_height"]
-                sampling_strategy = frames_info[0]["sampling_strategy"]
                 turns = self.prompt_builder.num_turns()
                 prior_response = None
                 conversation = []
@@ -182,11 +189,11 @@ class BatchRunner:
 
                     stage, num_inference_attempts, message = self.prompt_builder.build(
                         query=query,
-                        frames_paths=frames_paths,
+                        video_path=video_path,
                         timestamps=frame_labels,
+                        segments=segments,
                         prior_response=prior_response,
-                        turn_index=turn_index,
-                        selected_frames_list=selected_frames_list
+                        turn_index=turn_index
                     )
 
                     if ctr == 0:
@@ -261,8 +268,6 @@ class BatchRunner:
                     "clip_end_sec": instance.get("clip_end_sec"),
                     "video_start_frame": instance.get("video_start_frame"),
                     "video_end_frame": instance.get("video_end_frame"),
-                    "frame_width": frame_width,
-                    "frame_height": frame_height,
                     "sampling_strategy": sampling_strategy,
                     "template": instance.get("template"),
                     "conversation": conversation
@@ -281,24 +286,17 @@ class BatchRunner:
                 video_uid = instance["video_uid"]
                 query = instance["query"]
                 video_path = os.path.join(self.config.dataset_path, "v2", "nlq_videos", "full_scale", video_uid + ".mp4")
-                frames_info = self.sampler.sample(video_uid)
-                if frames_info is None:
-                    print(f"Skipping {video_uid} due to possible memory issue")
-                    continue
-                frames_paths = [f["frame_path"] for f in frames_info]
-                frame_labels = [f["label"] for f in frames_info]
-                frames_dir = os.path.dirname(frames_paths[0])
+                frame_labels = self.get_frame_labels(video_path)
                 segments = self._extract_segments(instance['response'])
-                selected_frames_list = self._select_frames(segments, frames_dir)
                 responses = []
                 for selected_frames in selected_frames_list:
                     stage, num_inference_attempts, message = self.prompt_builder.build(
                         query=query,
-                        frames_paths=frames_paths,
+                        video_path=video_path,
                         timestamps=frame_labels,
+                        segments=segments,
                         prior_response=instance["response"],
                         turn_index=turns-1,
-                        selected_frames_list=selected_frames
                     )
                     response = self.inference_engine.run(message, num_inference_attempts)[0]
                     responses.append(f"####### Segment {selected_frames[0]} - {selected_frames[-1]} #######\n{response}")
