@@ -46,39 +46,52 @@ class FrameSampler:
         return max_dim
     
     def generate_frames(self, video_uids, video_dir):
+        if self.config.sampling_strategy == "shot_detection":
+            video_frames_dir = os.path.join(self.temp_frames_dir, video_uid)
+            if os.path.exists(video_frames_dir):
+                return video_frames_dir
+            raise ValueError(f"Video {video_uid} not found in {video_frames_dir}: Please run shot_detection first")
         print(f"Generating frames for {len(video_uids)} videos")
         for video_uid in tqdm(video_uids):
             video_path = os.path.join(video_dir, video_uid + ".mp4")
             video_frames_dir = os.path.join(self.temp_frames_dir, video_uid)
-            os.makedirs(video_frames_dir, exist_ok=True)
+            if os.path.exists(video_frames_dir):
+                continue
+            os.makedirs(video_frames_dir)
             cap = cv2.VideoCapture(video_path)
             fps = cap.get(cv2.CAP_PROP_FPS)
-            total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))/fps
-            indices = np.arange(0, total_frames, 1)
+            total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
+            indices = np.arange(0, total_frames, fps)
             for idx in indices:
-                frame_path = os.path.join(video_frames_dir, f"frame_{int(idx)}.jpg")
+                frame_path = os.path.join(video_frames_dir, f"frame_{int(idx/fps)}.jpg")
                 if os.path.exists(frame_path):
                     continue
                 cap.set(cv2.CAP_PROP_POS_FRAMES, idx)
                 ret, frame = cap.read()
-                if not ret:
-                    continue
-                cv2.imwrite(frame_path, frame)
+                try:
+                    cv2.imwrite(frame_path, frame)
+                except Exception as e:
+                    print(f"Error writing frame {idx} to {frame_path}: {e}")
         cap.release()
         return video_frames_dir
 
     def sample(self, video_uid):
         video_frames_dir = os.path.join(self.temp_frames_dir, video_uid)
-        video_frames_paths = {int(x.split("frame_")[1].split(".")[0]): os.path.join(video_frames_dir, x) for x in os.listdir(video_frames_dir)}
+        sampling_strategy = self.config.sampling_strategy
+        if sampling_strategy in ["uniform", "dense"]:
+            video_frames_paths = {int(x.split("frame_")[1].split(".")[0]): os.path.join(video_frames_dir, x) for x in os.listdir(video_frames_dir)}
+        else:
+            video_frames_paths = {tuple(map(int, x.split(".")[0].split("_")[1:])): os.path.join(video_frames_dir, x) for x in os.listdir(video_frames_dir)}
         total_frames = max(video_frames_paths.keys())
 
-        sampling_strategy = self.config.sampling_strategy
 
         if sampling_strategy == "uniform":
             indices = np.linspace(0, total_frames - 1, self.config.num_frames).astype(int)
         elif sampling_strategy == "dense":
             step = max(1, int(1 / self.config.sampling_rate))
             indices = np.arange(0, total_frames, step)
+        elif sampling_strategy == "shot_detection":
+            indices = sorted(video_frames_paths.keys(), key=lambda x: x[0])
         else:
             raise ValueError("Unsupported sampling strategy")
         
@@ -100,11 +113,18 @@ class FrameSampler:
                 width = int(width * scale)
                 height = int(height * scale)
                 frame = cv2.resize(frame, (width, height))
+            if sampling_strategy in ["uniform", "dense"]:
+                label = f"{int(idx)}s"
+            elif sampling_strategy == "shot_detection":
+                label = f"{int(idx[0])}s - {int(idx[1])}s"
+            else:
+                raise ValueError("Unsupported sampling strategy")
+
             frames_with_info.append({
                 "frame": frame,
                 "frame_index": idx,
                 "timestamp_sec": idx,
-                "label": f"{int(idx)}s",
+                "label": label,
                 "frame_path": frame_path,
                 "frame_width": width,
                 "frame_height": height,

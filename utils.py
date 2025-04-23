@@ -33,8 +33,9 @@ def parse_stages(prior_text):
     """
     valid_stages = []
     lines = prior_text.splitlines()
+    print("###################### LINES: \n", lines)
     for line in lines:
-        line = line.strip()
+        line = line.strip().split('-')[0].split(':')[0].strip()
         # Look for lines like "1. Identifying faulty components"
         match = re.match(r"^\d+\.\s*(.*)$", line)
         if match:
@@ -45,12 +46,15 @@ def parse_stages(prior_text):
 
 
 
-def check_segments(response_text, valid_stages):
+def check_segments(response_text, valid_stages, sampling_strategy):
     """
     Check each segment in RESPONSE to see if the before/after stages match valid stages.
     """
     lines = response_text.splitlines()
-    segment_pattern = re.compile(r"^(.*?)\:\s*(.*?)\s*->\s*(.*?)\s*$")
+    if sampling_strategy in ['uniform', 'dense']:
+        segment_pattern = re.compile(r"^(.*?)\:\s*(.*?)\s*->\s*(.*?)\s*$")
+    else:
+        segment_pattern = re.compile(r"^(.*?)\:\s*(.*?)\s*$")
     before_valid = False
     for line in lines:
         line = line.strip()
@@ -64,21 +68,24 @@ def check_segments(response_text, valid_stages):
             before_stage = match.group(2).strip().lower()
             before_stage = re.sub(r'[^a-z]', '', before_stage)
             # 3. e.g., "Disconnecting circuit breakers"
-            after_stage = match.group(3).strip().lower()
-            after_stage = re.sub(r'[^a-z]', '', after_stage)
+            if sampling_strategy in ['uniform', 'dense']:
+                after_stage = match.group(3).strip().lower()
+                after_stage = re.sub(r'[^a-z]', '', after_stage)
+                after_valid = any(valid_stage in after_stage for valid_stage in valid_stages)
+                if not after_valid:
+                    print("###################### AFTER STAGE: \n", after_stage)
+                    return False
             before_valid = any(valid_stage in before_stage for valid_stage in valid_stages)
-            after_valid = any(valid_stage in after_stage for valid_stage in valid_stages)
-
             if not before_valid:
-                return False
-            if not after_valid:
+                print("###################### BEFORE STAGE: \n", before_stage)
                 return False
     return before_valid
 
-def check_segmentation_validity(response_text, prior_response):
+def check_segmentation_validity(response_text, prior_response, config):
     """
     Check if the segmentation is valid.
     """
     valid_stages = parse_stages(prior_response)
-    return check_segments(response_text, valid_stages)
+    print("###################### VALID STAGES: \n", valid_stages)
+    return check_segments(response_text, valid_stages, config.sampling_strategy)
 
