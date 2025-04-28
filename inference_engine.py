@@ -60,7 +60,6 @@ class InferenceEngine:
             temperature=0.8,
             num_return_sequences=num_inference_attempts
             )
-        print("generated_ids", generated_ids)
         print("Generated IDs shape:", generated_ids.shape)
         
         # Check if generation was successful
@@ -77,7 +76,6 @@ class InferenceEngine:
         # generated_ids_trimmed = [
         #     out_ids[len(in_ids) :] for in_ids, out_ids in zip(inputs.input_ids, generated_ids)
         # ]
-        print("generated_ids_trimmed", generated_ids_trimmed)
         output_text = self.processor.batch_decode(
             generated_ids_trimmed, skip_special_tokens=True, clean_up_tokenization_spaces=False
         )

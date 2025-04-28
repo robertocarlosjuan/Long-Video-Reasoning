@@ -81,8 +81,8 @@ class FrameSampler:
         if sampling_strategy in ["uniform", "dense"]:
             video_frames_paths = {int(x.split("frame_")[1].split(".")[0]): os.path.join(video_frames_dir, x) for x in os.listdir(video_frames_dir)}
         else:
-            video_frames_paths = {tuple(map(int, x.split(".")[0].split("_")[1:])): os.path.join(video_frames_dir, x) for x in os.listdir(video_frames_dir)}
-        total_frames = max(video_frames_paths.keys())
+            video_frames_paths = {tuple(map(int, x.split(".")[0].split("_")[1:])): os.path.join(video_frames_dir, x) for x in os.listdir(video_frames_dir) if x.endswith(".jpg")}
+        total_frames = len(video_frames_paths)
 
 
         if sampling_strategy == "uniform":

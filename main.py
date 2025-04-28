@@ -11,6 +11,7 @@ from dataset import Ego4DLoader
 from sampler import FrameSampler
 from inference_engine import InferenceEngine
 from batch_runner import BatchRunner
+from recursive_batch_runner import RecursiveBatchRunner
 
 # Map string names to config classes
 config_presets = {
@@ -44,5 +45,8 @@ if __name__ == "__main__":
     dataset_loader = Ego4DLoader(config)
     sampler = FrameSampler(config)
     inference_engine = InferenceEngine(config)
-    runner = BatchRunner(config, dataset_loader, sampler, inference_engine)
+    if config.runner_type == "standard":   
+        runner = BatchRunner(config, dataset_loader, sampler, inference_engine)
+    elif config.runner_type == "recursive":
+        runner = RecursiveBatchRunner(config, dataset_loader, sampler, inference_engine)
     runner.run()
